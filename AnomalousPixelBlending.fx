@@ -68,7 +68,7 @@ float3 PS(float2 texcoord : TEXCOORD, float4 offset[1]) : SV_TARGET {
   return lerp(i, result, MaxBlendingStrength);
 }
 
-technique SpuriousPixelBlending {
+technique AnomalousPixelBlending {
   pass
   {
     VertexShader = PostProcessVS;
