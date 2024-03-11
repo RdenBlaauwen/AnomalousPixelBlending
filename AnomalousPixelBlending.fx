@@ -19,13 +19,25 @@ uniform float MaxBlendingStrength <
 #define SPB_LUMA_WEIGHTS float3(0.26, 0.6, 0.14)
 #define MAX_CORNER_WEIGHT (1/16)
 #define MAX_TRANSVERSE_WEIGHT (1/8)
+#define BUFFER_METRICS float2(BUFFER_RCP_WIDTH, BUFFER_RCP_HEIGHT)
 
 float getDelta(float3 colA, float3 colB) 
 {
   return dot(abs(colA - colB), SPB_LUMA_WEIGHTS);
 }
 
-float3 PS(float2 texcoord : TEXCOORD, float4 offset[1]) : SV_TARGET {
+void VS(
+	in uint id : SV_VertexID,
+	out float4 position : SV_Position,
+	out float2 texcoord : TEXCOORD0,
+	out float4 offset[2] : TEXCOORD1)
+{
+	PostProcessVS(id, position, texcoord);
+  offset[0] = mad(BUFFER_METRICS.xyxy, float4(-1.0, 0.0, 0.0, 1.0), texcoord.xyxy);
+  offset[1] = mad(BUFFER_METRICS.xyxy, float4( 0.0, -1.0, 0.0,  1.0), texcoord.xyxy);
+}
+
+float3 PS(float2 texcoord : TEXCOORD, float4 offset[2] : TEXCOORD1) : SV_TARGET {
   //  x [n] y
   // [w][i][e]
   //  w [s] z
@@ -33,8 +45,8 @@ float3 PS(float2 texcoord : TEXCOORD, float4 offset[1]) : SV_TARGET {
   i = tex2D(ReShade::BackBuffer, texcoord).rgb;
   n = tex2D(ReShade::BackBuffer, offset[1].xy).rgb; // N
   w = tex2D(ReShade::BackBuffer, offset[0].xy).rgb; // W
-  e = tex2D(ReShade::BackBuffer, offset[1].wz).rgb; // E
-  s = tex2D(ReShade::BackBuffer, offset[0].wz).rgb; // S
+  e = tex2D(ReShade::BackBuffer, offset[0].wz).rgb; // E
+  s = tex2D(ReShade::BackBuffer, offset[1].wz).rgb; // S
 
   float4 deltas;
   deltas.r = getDelta(i, w);
@@ -42,21 +54,21 @@ float3 PS(float2 texcoord : TEXCOORD, float4 offset[1]) : SV_TARGET {
   deltas.b = getDelta(i, e);
   deltas.a = getDelta(i, s);
 
-  float maxDelta = max(max(r,g), max(b,a));
+  float maxDelta = max(max(deltas.r,deltas.g), max(deltas.b,deltas.a));
   if(maxDelta < MinDeltaThreshold) discard;
 
   float4 cornerWeights = sqrt(deltas.rgba * deltas.gbar);
   cornerWeights = smoothstep(MinDeltaThreshold, MaxDeltaThreshold, cornerWeights) * MAX_CORNER_WEIGHT;
   float4 weights = cornerWeights.xyzw + cornerWeights.wxyz;
 
-  float3 blendColors = n * weights.g + w * weights.r + e * weights.b + s * weights.d;
+  float3 blendColors = n * weights.g + w * weights.r + e * weights.b + s * weights.a;
 
   float weightSum = dot(weights, float(1.0).xxxx);
   float gap = (MAX_CORNER_WEIGHT * 8.0) - weightSum;
 
   float2 transDeltas;
-  transDeltas.x = getDelta(b,c);
-  transDeltas.y = getDelta(a,d);
+  transDeltas.x = getDelta(w,e);
+  transDeltas.y = getDelta(n,s);
   
   float2 transWeights = smoothstep(MinDeltaThreshold, MaxDeltaThreshold, transDeltas) * MAX_TRANSVERSE_WEIGHT * gap;
 
@@ -71,7 +83,7 @@ float3 PS(float2 texcoord : TEXCOORD, float4 offset[1]) : SV_TARGET {
 technique AnomalousPixelBlending {
   pass
   {
-    VertexShader = PostProcessVS;
+    VertexShader = VS;
     PixelShader = PS;
   }
 }
