@@ -16,8 +16,14 @@ uniform float MaxDeltaThreshold <
 uniform float MaxBlendingStrength <
   ui_label = "MaxBlendingStrength";
   ui_type = "slider";
-  ui_min = 0.; ui_max = 1.0; ui_step = 0.01;
+  ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
 > = 1.0;
+
+uniform float LumaAdaptationRange <
+  ui_label = "LumaAdaptationRange";
+  ui_type = "slider";
+  ui_min = 0.0; ui_max = 0.95; ui_step = 0.01;
+> = 0.75;
 
 #define SPB_LUMA_WEIGHTS float3(0.26, 0.6, 0.14)
 #ifndef MAX_CORNER_WEIGHT
@@ -28,9 +34,14 @@ uniform float MaxBlendingStrength <
 #endif
 #define BUFFER_METRICS float2(BUFFER_RCP_WIDTH, BUFFER_RCP_HEIGHT)
 
+float getLuma(float3 rgb)
+{
+  return dot(rgb, SPB_LUMA_WEIGHTS);
+}
+
 float getDelta(float3 colA, float3 colB) 
 {
-  return dot(abs(colA - colB), SPB_LUMA_WEIGHTS);
+  return getLuma(abs(colA - colB));
 }
 
 void MyVS(
@@ -55,11 +66,27 @@ float3 MyPS(float4 position : SV_Position, float2 texcoord : TEXCOORD, float4 of
   // e = tex2D(ReShade::BackBuffer, offset[0].zw).rgb; // E
   // s = tex2D(ReShade::BackBuffer, offset[1].zw).rgb; // S
 
-    i = tex2D(ReShade::BackBuffer, texcoord).rgb;
+  i = tex2D(ReShade::BackBuffer, texcoord).rgb;
   n = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, -1.0)).rgb; // N
   w = tex2Doffset(ReShade::BackBuffer, texcoord, int2(-1.0, 0.0)).rgb; // W
   e = tex2Doffset(ReShade::BackBuffer, texcoord, int2(1.0, 0.0)).rgb; // E
   s = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, 1.0)).rgb; // S
+
+  // Get luminance of each pixel
+  float ln,lw,le,ls,li;
+  li = getLuma(i);
+  ln = getLuma(n);
+  lw = getLuma(w);
+  le = getLuma(e);
+  ls = getLuma(s);
+
+  // Get largest luma
+  float maxLuma = max(max(max(li,ln), max(lw,le)),ls);
+  // Get factor by which thresholds should be adapted/predicated. Lower max luma --> lower factor --> lower thresholds
+  float adaptationFactor = mad(-LumaAdaptationRange, 1.0 - maxLuma, 1.0);
+  // float adaptationFactor = lerp(1.0 - LumaAdaptationRange, 1.0, maxLuma);
+  // adapt thresholds
+  float thresholds= float2(MinDeltaThreshold, MaxDeltaThreshold) * adaptationFactor;
 
   float4 deltas;
   deltas.r = getDelta(i, w);
@@ -68,9 +95,12 @@ float3 MyPS(float4 position : SV_Position, float2 texcoord : TEXCOORD, float4 of
   deltas.a = getDelta(i, s);
 
   float maxDelta = max(max(deltas.r,deltas.g), max(deltas.b,deltas.a));
-  if(maxDelta < MinDeltaThreshold) discard;
 
-  deltas = smoothstep(MinDeltaThreshold, MaxDeltaThreshold, deltas);
+  // Max delta must be equal or larger than min threshold
+  if(maxDelta < thresholds.x) discard;
+
+  // Interpolate values between min and max threshold.
+  deltas = smoothstep(thresholds.x, thresholds.y, deltas);
 
   // float4 cornerWeights = smoothstep(MinDeltaThreshold, MaxDeltaThreshold, deltas.rgba * deltas.gbar);
   // float4 cornerWeights = deltas.rgba * deltas.gbar * MAX_CORNER_WEIGHT;
