@@ -44,28 +44,11 @@ float getDelta(float3 colA, float3 colB)
   return getLuma(abs(colA - colB));
 }
 
-void MyVS(
-	in uint id : SV_VertexID,
-	out float4 position : SV_Position,
-	out float2 texcoord : TEXCOORD0,
-	out float4 offset[2] : TEXCOORD1)
-{
-	PostProcessVS(id, position, texcoord);
-  offset[0] = mad(BUFFER_METRICS.xyxy, float4(-1.0, 0.0, 0.0, 1.0), texcoord.xyxy);
-  offset[1] = mad(BUFFER_METRICS.xyxy, float4( 0.0, -1.0, 0.0, 0.0), texcoord.xyxy);
-}
-
 float3 MyPS(float4 position : SV_Position, float2 texcoord : TEXCOORD, float4 offset[2] : TEXCOORD1) : SV_TARGET {
   //  x [n] y
   // [w][i][e]
   //  w [s] z
   float3 n,w,e,s,i;
-  // i = tex2D(ReShade::BackBuffer, texcoord).rgb;
-  // n = tex2D(ReShade::BackBuffer, offset[1].xy).rgb; // N
-  // w = tex2D(ReShade::BackBuffer, offset[0].xy).rgb; // W
-  // e = tex2D(ReShade::BackBuffer, offset[0].zw).rgb; // E
-  // s = tex2D(ReShade::BackBuffer, offset[1].zw).rgb; // S
-
   i = tex2D(ReShade::BackBuffer, texcoord).rgb;
   n = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, -1.0)).rgb; // N
   w = tex2Doffset(ReShade::BackBuffer, texcoord, int2(-1.0, 0.0)).rgb; // W
@@ -124,7 +107,7 @@ float3 MyPS(float4 position : SV_Position, float2 texcoord : TEXCOORD, float4 of
 technique AnomalousPixelBlending {
   pass
   {
-    VertexShader = MyVS;
+    VertexShader = PostProcessVS;
     PixelShader = MyPS;
   }
 }
