@@ -4,26 +4,26 @@
 uniform float MinDeltaThreshold <
   ui_label = "MinDeltaThreshold";
   ui_type = "slider";
-  ui_min = 0.0; ui_max = 1.0; ui_step = 0.001;
-> = 0.05;
+  ui_min = 0.002; ui_max = 1.0; ui_step = 0.001;
+> = 0.075;
 
 uniform float MaxDeltaThreshold <
   ui_label = "MaxDeltaThreshold";
   ui_type = "slider";
-  ui_min = 0.0; ui_max = 1.0; ui_step = 0.001;
-> = 0.15;
+  ui_min = 0.002; ui_max = 1.0; ui_step = 0.001;
+> = 0.2;
+
+uniform float LumaAdaptationRange <
+  ui_label = "LumaAdaptationRange";
+  ui_type = "slider";
+  ui_min = 0.0; ui_max = 0.97; ui_step = 0.01;
+> = 0.95;
 
 uniform float MaxBlendingStrength <
   ui_label = "MaxBlendingStrength";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
-> = 1.0;
-
-uniform float LumaAdaptationRange <
-  ui_label = "LumaAdaptationRange";
-  ui_type = "slider";
-  ui_min = 0.0; ui_max = 0.95; ui_step = 0.01;
-> = 0.75;
+> = 0.8;
 
 #define SPB_LUMA_WEIGHTS float3(0.26, 0.6, 0.14)
 #ifndef MAX_CORNER_WEIGHT
@@ -86,7 +86,7 @@ float3 MyPS(float4 position : SV_Position, float2 texcoord : TEXCOORD, float4 of
   float adaptationFactor = mad(-LumaAdaptationRange, 1.0 - maxLuma, 1.0);
   // float adaptationFactor = lerp(1.0 - LumaAdaptationRange, 1.0, maxLuma);
   // adapt thresholds
-  float thresholds= float2(MinDeltaThreshold, MaxDeltaThreshold) * adaptationFactor;
+  float2 thresholds = float2(MinDeltaThreshold, MaxDeltaThreshold) * adaptationFactor;
 
   float4 deltas;
   deltas.r = getDelta(i, w);
