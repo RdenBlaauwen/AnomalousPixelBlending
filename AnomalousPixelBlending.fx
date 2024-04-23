@@ -1,6 +1,11 @@
 #include "ReShadeUI.fxh"
 #include "ReShade.fxh"
 
+uniform bool SkipBackground <
+  ui_label = "SkipBackground";
+  ui_type = "radio";
+> = false;
+
 uniform float MinDeltaThreshold <
   ui_label = "MinDeltaThreshold";
   ui_type = "slider";
@@ -26,6 +31,7 @@ uniform float MaxBlendingStrength <
 > = 0.8;
 
 #define SPB_LUMA_WEIGHTS float3(0.26, 0.6, 0.14)
+#define BACKGROUND_DEPTH 1.0
 #ifndef MAX_CORNER_WEIGHT
   #define MAX_CORNER_WEIGHT 0.0625
 #endif
@@ -45,6 +51,10 @@ float getDelta(float3 colA, float3 colB)
 }
 
 float3 MyPS(float4 position : SV_Position, float2 texcoord : TEXCOORD, float4 offset[2] : TEXCOORD1) : SV_TARGET {
+  if (SkipBackground) {
+    float currDepth = ReShade::GetLinearizedDepth(texcoord);
+    if (currDepth == BACKGROUND_DEPTH) discard;
+  }
   //  x [n] y
   // [w][i][e]
   //  w [s] z
