@@ -50,7 +50,7 @@ float getDelta(float3 colA, float3 colB)
   return getLuma(abs(colA - colB));
 }
 
-float3 MyPS(float4 position : SV_Position, float2 texcoord : TEXCOORD, float4 offset[2] : TEXCOORD1) : SV_TARGET {
+float3 MyPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : SV_TARGET {
   if (SkipBackground) {
     float currDepth = ReShade::GetLinearizedDepth(texcoord);
     if (currDepth == BACKGROUND_DEPTH) discard;
