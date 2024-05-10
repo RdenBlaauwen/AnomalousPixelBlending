@@ -76,6 +76,7 @@ float4 getDeltas(float3 target, float3 w, float3 n, float3 e, float3 s)
 }
 
 float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : SV_TARGET {
+  // Skip if pixel is part of background. May prevent stars from being eaten
   if (SkipBackground) {
     float currDepth = ReShade::GetLinearizedDepth(texcoord);
     if (currDepth == BACKGROUND_DEPTH) discard;
@@ -110,24 +111,27 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
 
   float maxDelta = max(max(deltas.r,deltas.g), max(deltas.b,deltas.a));
 
-  // Max delta must be equal or larger than min threshold
+  // early return if Max delta is smaller than min threshold
   if(maxDelta < thresholds.x) discard;
 
   // Interpolate values between min and max threshold.
   deltas = smoothstep(thresholds.x, thresholds.y, deltas);
 
+  // taking the root of the products of the perpendicular deltas detects corners
   float4 cornerWeights = sqrt(deltas.rgba * deltas.gbar) * CornerWeight;
-  float2 transWeights = sqrt(deltas.rg * deltas.ba) * TransverseWeight;
-
+  // sum of each corner a given pixel is involved in yields its total weight (so far)
   float4 weights = cornerWeights.xyzw + cornerWeights.wxyz;
   float weightSum = dot(weights, float(1.0).xxxx);
 
+  // taking the root of the products of transverse deltas detects whether target pixel is not part of a larger structure
+  // this is only an estimate of course
+  float2 transWeights = sqrt(deltas.rg * deltas.ba) * TransverseWeight;
+  // Scale weight of transverse weights by size of existing weights. Prevents shader from blending too aggressively
   weights += ((8 * MAX_CORNER_WEIGHT) - weightSum) * transWeights.xyxy;
   weightSum = dot(weights, float(1.0).xxxx);
 
+  // finally, determine how much of the neighbouring pixels must be blended in, according to their weight
   float3 blendColors = n * weights.g + w * weights.r + e * weights.b + s * weights.a;
-
-  const float3 debugColorNone = float3(0.0,0.0,0.0);
 
   float3 result = blendColors + (i * (1.0 - weightSum));
   return lerp(i, result, MaxBlendingStrength);
