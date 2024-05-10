@@ -1,6 +1,13 @@
 #include "ReShadeUI.fxh"
 #include "ReShade.fxh"
 
+#ifndef MAX_CORNER_WEIGHT
+  #define MAX_CORNER_WEIGHT 0.0625
+#endif
+#ifndef MAX_TRANSVERSE_WEIGHT
+  #define MAX_TRANSVERSE_WEIGHT 0.125
+#endif
+
 uniform bool SkipBackground <
   ui_label = "SkipBackground";
   ui_type = "radio";
@@ -24,21 +31,28 @@ uniform float LumaAdaptationRange <
   ui_min = 0.0; ui_max = 0.97; ui_step = 0.01;
 > = 0.95;
 
+uniform float CornerWeight <
+  ui_label = "CornerWeight";
+  ui_type = "slider";
+  ui_min = 0.0; ui_max = MAX_CORNER_WEIGHT; ui_step = 0.001;
+> = MAX_CORNER_WEIGHT;
+
+uniform float TransverseWeight <
+  ui_label = "TransverseWeight";
+  ui_type = "slider";
+  ui_min = 0.0; ui_max = MAX_TRANSVERSE_WEIGHT; ui_step = 0.001;
+> = MAX_TRANSVERSE_WEIGHT;
+
 uniform float MaxBlendingStrength <
   ui_label = "MaxBlendingStrength";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
 > = 0.8;
 
+
 #define SPB_LUMA_WEIGHTS float3(0.26, 0.6, 0.14)
 #define BACKGROUND_DEPTH 1.0
-#ifndef MAX_CORNER_WEIGHT
-  #define MAX_CORNER_WEIGHT 0.0625
-#endif
-#ifndef MAX_TRANSVERSE_WEIGHT
-  #define MAX_TRANSVERSE_WEIGHT 0.125
-#endif
-#define BUFFER_METRICS float2(BUFFER_RCP_WIDTH, BUFFER_RCP_HEIGHT)
+
 
 float getLuma(float3 rgb)
 {
@@ -50,7 +64,18 @@ float getDelta(float3 colA, float3 colB)
   return getLuma(abs(colA - colB));
 }
 
-float3 MyPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : SV_TARGET {
+float4 getDeltas(float3 target, float3 w, float3 n, float3 e, float3 s)
+{
+  float4 deltas;
+  deltas.r = getDelta(target, w);
+  deltas.g = getDelta(target, n);
+  deltas.b = getDelta(target, e);
+  deltas.a = getDelta(target, s);
+
+  return deltas;
+}
+
+float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : SV_TARGET {
   if (SkipBackground) {
     float currDepth = ReShade::GetLinearizedDepth(texcoord);
     if (currDepth == BACKGROUND_DEPTH) discard;
@@ -81,11 +106,7 @@ float3 MyPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : SV_TARG
   // adapt thresholds
   float2 thresholds = float2(MinDeltaThreshold, MaxDeltaThreshold) * adaptationFactor;
 
-  float4 deltas;
-  deltas.r = getDelta(i, w);
-  deltas.g = getDelta(i, n);
-  deltas.b = getDelta(i, e);
-  deltas.a = getDelta(i, s);
+  float4 deltas = getDeltas(i, w, n, e, s);
 
   float maxDelta = max(max(deltas.r,deltas.g), max(deltas.b,deltas.a));
 
@@ -95,29 +116,27 @@ float3 MyPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : SV_TARG
   // Interpolate values between min and max threshold.
   deltas = smoothstep(thresholds.x, thresholds.y, deltas);
 
-  // float4 cornerWeights = smoothstep(MinDeltaThreshold, MaxDeltaThreshold, deltas.rgba * deltas.gbar);
-  // float4 cornerWeights = deltas.rgba * deltas.gbar * MAX_CORNER_WEIGHT;
-  float4 cornerWeights = sqrt(deltas.rgba * deltas.gbar) * MAX_CORNER_WEIGHT;
-  // float4 cornerWeights = deltas.aaaa * deltas.rbrb;
-
-  // float4 cornerWeights = sqrt(deltas.rgba * deltas.gbar);
-  // cornerWeights = smoothstep(MinDeltaThreshold, MaxDeltaThreshold, cornerWeights) * MAX_CORNER_WEIGHT;
+  float4 cornerWeights = sqrt(deltas.rgba * deltas.gbar) * CornerWeight;
+  float2 transWeights = sqrt(deltas.rg * deltas.ba) * TransverseWeight;
 
   float4 weights = cornerWeights.xyzw + cornerWeights.wxyz;
+  float weightSum = dot(weights, float(1.0).xxxx);
+
+  weights += ((8 * MAX_CORNER_WEIGHT) - weightSum) * transWeights.xyxy;
+  weightSum = dot(weights, float(1.0).xxxx);
 
   float3 blendColors = n * weights.g + w * weights.r + e * weights.b + s * weights.a;
 
-  float weightSum = dot(weights, float(1.0).xxxx);
+  const float3 debugColorNone = float3(0.0,0.0,0.0);
 
   float3 result = blendColors + (i * (1.0 - weightSum));
-
   return lerp(i, result, MaxBlendingStrength);
 }
 
 technique AnomalousPixelBlending {
-  pass
+  pass Blending
   {
     VertexShader = PostProcessVS;
-    PixelShader = MyPS;
+    PixelShader = BlendingPS;
   }
 }
