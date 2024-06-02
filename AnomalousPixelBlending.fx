@@ -16,20 +16,20 @@ uniform bool SkipBackground <
 uniform float MinDeltaThreshold <
   ui_label = "MinDeltaThreshold";
   ui_type = "slider";
-  ui_min = 0.002; ui_max = 1.0; ui_step = 0.001;
-> = 0.075;
+  ui_min = 0.002; ui_max = 1.0; ui_step = 0.01;
+> = 0.12;
 
 uniform float MaxDeltaThreshold <
   ui_label = "MaxDeltaThreshold";
   ui_type = "slider";
-  ui_min = 0.002; ui_max = 1.0; ui_step = 0.001;
+  ui_min = 0.002; ui_max = 1.0; ui_step = 0.01;
 > = 0.2;
 
 uniform float LumaAdaptationRange <
   ui_label = "LumaAdaptationRange";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 0.97; ui_step = 0.01;
-> = 0.95;
+> = 0.85;
 
 uniform float CornerWeight <
   ui_label = "CornerWeight";
@@ -43,15 +43,29 @@ uniform float TransverseWeight <
   ui_min = 0.0; ui_max = MAX_TRANSVERSE_WEIGHT; ui_step = 0.001;
 > = MAX_TRANSVERSE_WEIGHT;
 
-uniform float MaxBlendingStrength <
-  ui_label = "MaxBlendingStrength";
+uniform float HighlightCurve <
+  ui_label = "HighlightCurve";
+  ui_type = "slider";
+  ui_min = 1.0; ui_max = 10.0; ui_step = 0.1;
+> = 5.0;
+
+uniform float BlendingStrength <
+  ui_label = "BlendingStrength";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
-> = 0.8;
+> = 1.0;
+
+uniform float HighlightBlendingStrength <
+  ui_label = "HighlightBlendingStrength";
+  ui_type = "slider";
+  ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+> = 0.0;
 
 
 #define SPB_LUMA_WEIGHTS float3(0.26, 0.6, 0.14)
 #define BACKGROUND_DEPTH 1.0
+#define EULER 2.71828
+#define LOG_CURVE_CENTER .5
 
 
 float getLuma(float3 rgb)
@@ -81,9 +95,10 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
     float currDepth = ReShade::GetLinearizedDepth(texcoord);
     if (currDepth == BACKGROUND_DEPTH) discard;
   }
-  //  x [n] y
+
+  //    [n]  
   // [w][i][e]
-  //  w [s] z
+  //    [s]  
   float3 n,w,e,s,i;
   i = tex2D(ReShade::BackBuffer, texcoord).rgb;
   n = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, -1.0)).rgb; // N
@@ -118,6 +133,9 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   deltas = smoothstep(thresholds.x, thresholds.y, deltas);
 
   // taking the root of the products of the perpendicular deltas detects corners
+  //  * [n] *
+  // [w]   [e]
+  //  * [s] *
   float4 cornerWeights = sqrt(deltas.rgba * deltas.gbar) * CornerWeight;
   // sum of each corner a given pixel is involved in yields its total weight (so far)
   float4 weights = cornerWeights.xyzw + cornerWeights.wxyz;
@@ -125,6 +143,9 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
 
   // taking the root of the products of transverse deltas detects whether target pixel is not part of a larger structure
   // this is only an estimate of course
+  //    [n]  
+  // [w] * [e]
+  //    [s]  
   float2 transWeights = sqrt(deltas.rg * deltas.ba) * TransverseWeight;
   // Scale weight of transverse weights by size of existing weights. Prevents shader from blending too aggressively
   weights += ((8 * MAX_CORNER_WEIGHT) - weightSum) * transWeights.xyxy;
@@ -134,7 +155,17 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   float3 blendColors = n * weights.g + w * weights.r + e * weights.b + s * weights.a;
 
   float3 result = blendColors + (i * (1.0 - weightSum));
-  return lerp(i, result, MaxBlendingStrength);
+
+  // If the current pixel is brighter than the brightest adjacent "corner", highlight preservation must happen
+  // THe "corner" check exists to preserve blending strength around diagonal jaggies, even when the target pixel is bright.
+  float brightestCorner = sqrt(max(lw,le) * max(ln,ls));
+  float excessBrightness = smoothstep(brightestCorner, 1f, li);
+
+  // If the current pixel is very bright, apply a lower "highlight blending strength" to preserve highlights.
+  float highlightPreservationFactor = rcp(1 + pow(EULER, -HighlightCurve * (excessBrightness - LOG_CURVE_CENTER))); // Logistic function to scale brightness
+  float strength = lerp(BlendingStrength, HighlightBlendingStrength, highlightPreservationFactor);
+
+  return lerp(i, result, strength);
 }
 
 technique AnomalousPixelBlending {
