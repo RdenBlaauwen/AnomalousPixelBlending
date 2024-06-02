@@ -45,6 +45,18 @@ uniform float LumaAdaptationRange <
   ui_min = 0.0; ui_max = 0.97; ui_step = 0.01;
 > = 0.95;
 
+uniform float MinIntrusivenessThreshold <
+  ui_label = "MinIntrusivenessThreshold";
+  ui_type = "slider";
+  ui_min = 1.0; ui_max = 8.0; ui_step = 0.1;
+> = 4.0;
+
+uniform float MaxIntrusivenessThreshold <
+  ui_label = "MaxIntrusivenessThreshold";
+  ui_type = "slider";
+  ui_min = 1.0; ui_max = 8.0; ui_step = 0.1;
+> = 5.0;
+
 uniform float CornerWeight <
   ui_label = "CornerWeight";
   ui_type = "slider";
@@ -162,14 +174,10 @@ float3 AdvancedBlendingPS(float4 position : SV_Position, float2 texcoord : TEXCO
   //  w [s] z
   float3 n,w,e,s,i,nw,ne,sw,se;
   i = tex2D(ReShade::BackBuffer, texcoord).rgb;
-  ne = tex2Doffset(ReShade::BackBuffer, texcoord, int2(1.0, -1.0)).rgb; // NE
   n = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, -1.0)).rgb; // N
-  nw = tex2Doffset(ReShade::BackBuffer, texcoord, int2(-1.0, -1.0)).rgb; // NW
   w = tex2Doffset(ReShade::BackBuffer, texcoord, int2(-1.0, 0.0)).rgb; // W
   e = tex2Doffset(ReShade::BackBuffer, texcoord, int2(1.0, 0.0)).rgb; // E
-  se = tex2Doffset(ReShade::BackBuffer, texcoord, int2(1.0, 1.0)).rgb; // SE
   s = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, 1.0)).rgb; // S
-  sw = tex2Doffset(ReShade::BackBuffer, texcoord, int2(-1.0, 1.0)).rgb; // SW
 
   // Get luminance of each pixel
   float ln,lw,le,ls,li;
@@ -188,19 +196,33 @@ float3 AdvancedBlendingPS(float4 position : SV_Position, float2 texcoord : TEXCO
   float2 thresholds = float2(MinDeltaThreshold, MaxDeltaThreshold) * adaptationFactor;
 
   float4 deltas = getDeltas(i, w, n, e, s);
-  float4 diagDeltas = getDeltas(i, nw, ne, se, sw);
 
-  float maxDelta = max((max(deltas.r,deltas.g), max(deltas.b,deltas.a)), max(max(diagDeltas.r,diagDeltas.g), max(diagDeltas.b,diagDeltas.a)));
+  float maxDelta = max(max(deltas.r,deltas.g), max(deltas.b,deltas.a));
 
   // early return if Max delta is smaller than min threshold
   if(maxDelta < thresholds.x) discard;
 
-  // Interpolate values between min and max threshold.
+  ne = tex2Doffset(ReShade::BackBuffer, texcoord, int2(1.0, -1.0)).rgb; // NE
+  nw = tex2Doffset(ReShade::BackBuffer, texcoord, int2(-1.0, -1.0)).rgb; // NW
+  se = tex2Doffset(ReShade::BackBuffer, texcoord, int2(1.0, 1.0)).rgb; // SE
+  sw = tex2Doffset(ReShade::BackBuffer, texcoord, int2(-1.0, 1.0)).rgb; // SW
+  float4 diagDeltas = getDeltas(i, nw, ne, se, sw);
+
+    // Interpolate values between min and max threshold.
   deltas = smoothstep(thresholds.x, thresholds.y, deltas);
   diagDeltas = smoothstep(thresholds.x, thresholds.y, diagDeltas);
 
+  // float minContrast = min(min(min(deltas.r,deltas.g),min(deltas.b,deltas.a)),min(min(diagDeltas.r,diagDeltas.g),min(diagDeltas.b,diagDeltas.a)));
+  // float deltaSum = dot(deltas - minContrast, float(1f).xxxx) + dot(diagDeltas - minContrast, float(1f).xxxx);
+
+  float deltaSum = dot(deltas, float(1f).xxxx) + dot(diagDeltas, float(1f).xxxx);
+
+  float intrusiveness = smoothstep(MinIntrusivenessThreshold * adaptationFactor, MaxIntrusivenessThreshold * adaptationFactor, deltaSum);
+
+  float4 interpolatedDiagDeltas = lerp(1f, diagDeltas, intrusiveness);
+
   // taking the cube root of the products of the perpendicular and diagonal deltas detects corners
-  float4 cornerWeights = pow(deltas.rgba * deltas.gbar * diagDeltas.rgba, 1f / 3f) * CornerWeight;
+  float4 cornerWeights = pow(deltas.rgba * deltas.gbar * interpolatedDiagDeltas.rgba, 1f / (2f + intrusiveness)) * CornerWeight;
   // sum of each corner a given pixel is involved in yields its total weight (so far)
   float4 weights = cornerWeights.xyzw + cornerWeights.wxyz;
   float weightSum = dot(weights, float(1.0).xxxx);
