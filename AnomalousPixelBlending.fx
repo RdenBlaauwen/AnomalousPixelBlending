@@ -1,13 +1,6 @@
 #include "ReShadeUI.fxh"
 #include "ReShade.fxh"
 
-#ifndef MAX_CORNER_WEIGHT
-  #define MAX_CORNER_WEIGHT 0.0625
-#endif
-#ifndef MAX_TRANSVERSE_WEIGHT
-  #define MAX_TRANSVERSE_WEIGHT 0.125
-#endif
-
 uniform bool SkipBackground <
   ui_label = "SkipBackground";
   ui_type = "radio";
@@ -31,18 +24,6 @@ uniform float LumaAdaptationRange <
   ui_min = 0.0; ui_max = 0.97; ui_step = 0.01;
 > = 0.85;
 
-uniform float CornerWeight <
-  ui_label = "CornerWeight";
-  ui_type = "slider";
-  ui_min = 0.0; ui_max = MAX_CORNER_WEIGHT; ui_step = 0.001;
-> = MAX_CORNER_WEIGHT;
-
-uniform float TransverseWeight <
-  ui_label = "TransverseWeight";
-  ui_type = "slider";
-  ui_min = 0.0; ui_max = MAX_TRANSVERSE_WEIGHT; ui_step = 0.001;
-> = MAX_TRANSVERSE_WEIGHT;
-
 uniform float HighlightCurve <
   ui_label = "HighlightCurve";
   ui_type = "slider";
@@ -55,11 +36,26 @@ uniform float BlendingStrength <
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
 > = 1.0;
 
+//TODO: change to highlight preservation (ivnert values)
 uniform float HighlightBlendingStrength <
   ui_label = "HighlightBlendingStrength";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
 > = 0.0;
+
+//TODO: rename, add reccomandations
+uniform float IsolatedPixelremoval <
+  ui_label = "IsolatedPixelremoval";
+  ui_type = "slider";
+  ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+> = 0.5;
+
+#ifndef CORNER_WEIGHT
+  #define CORNER_WEIGHT 0.0625
+#endif
+#ifndef TRANSVERSE_WEIGHT
+  #define TRANSVERSE_WEIGHT 0.125
+#endif
 
 
 #define SPB_LUMA_WEIGHTS float3(0.26, 0.6, 0.14)
@@ -118,7 +114,6 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   float maxLuma = max(max(max(li,ln), max(lw,le)),ls);
   // Get factor by which thresholds should be adapted/predicated. Lower max luma --> lower factor --> lower thresholds
   float adaptationFactor = mad(-LumaAdaptationRange, 1.0 - maxLuma, 1.0);
-  // float adaptationFactor = lerp(1.0 - LumaAdaptationRange, 1.0, maxLuma);
   // adapt thresholds
   float2 thresholds = float2(MinDeltaThreshold, MaxDeltaThreshold) * adaptationFactor;
 
@@ -136,7 +131,19 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   //  * [n] *
   // [w]   [e]
   //  * [s] *
-  float4 cornerWeights = sqrt(deltas.rgba * deltas.gbar) * CornerWeight;
+  float4 cornerProducts = deltas.rgba * deltas.gbar;
+  //early return if none of the cornerproducts is greater than 0
+  if(dot(cornerProducts,float(1.0).xxxx) == 0f) discard;
+  // finally the root
+  float4 cornerDeltas = sqrt(cornerProducts);
+
+  // The smallest weight determines whether the pixel has no similar pixels nearby (aka is isolated)
+  float leastCornerDelta = min(min(cornerDeltas.r,cornerDeltas.g),min(cornerDeltas.b,cornerDeltas.a));
+  float isolatedPixelBlendStrength = leastCornerDelta * IsolatedPixelremoval;
+  // If pixel is isolated, increase the blending amounts
+  const float2 blendWeights = float2(CORNER_WEIGHT, TRANSVERSE_WEIGHT) * (1f + isolatedPixelBlendStrength);
+
+  float4 cornerWeights = cornerDeltas * blendWeights.x;
   // sum of each corner a given pixel is involved in yields its total weight (so far)
   float4 weights = cornerWeights.xyzw + cornerWeights.wxyz;
   float weightSum = dot(weights, float(1.0).xxxx);
@@ -146,9 +153,9 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   //    [n]  
   // [w] * [e]
   //    [s]  
-  float2 transWeights = sqrt(deltas.rg * deltas.ba) * TransverseWeight;
+  float2 transWeights = sqrt(deltas.rg * deltas.ba) * blendWeights.y;
   // Scale weight of transverse weights by size of existing weights. Prevents shader from blending too aggressively
-  weights += ((8 * MAX_CORNER_WEIGHT) - weightSum) * transWeights.xyxy;
+  weights += ((8 * blendWeights.x) - weightSum) * transWeights.xyxy;
   weightSum = dot(weights, float(1.0).xxxx);
 
   // finally, determine how much of the neighbouring pixels must be blended in, according to their weight
@@ -162,8 +169,14 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   float excessBrightness = smoothstep(brightestCorner, 1f, li);
 
   // If the current pixel is very bright, apply a lower "highlight blending strength" to preserve highlights.
-  float highlightPreservationFactor = rcp(1 + pow(EULER, -HighlightCurve * (excessBrightness - LOG_CURVE_CENTER))); // Logistic function to scale brightness
-  float strength = lerp(BlendingStrength, HighlightBlendingStrength, highlightPreservationFactor);
+  // float highlightPreservationFactor = rcp(1 + pow(EULER, -HighlightCurve * (excessBrightness - LOG_CURVE_CENTER))); // Logistic function to scale brightness
+  // Simpler function, achieves the same purpose but is simpler and faster.
+  float highlightPreservationFactor = saturate(excessBrightness * HighlightCurve); // Logistic function to scale brightness
+
+  //If isolatedPixelBlendStrength is high, highlightBlendStrength should be closer to normal blendingStrength
+  float highlightBlendStrength = lerp(HighlightBlendingStrength, BlendingStrength, isolatedPixelBlendStrength);
+
+  float strength = lerp(BlendingStrength, highlightBlendStrength, highlightPreservationFactor);
 
   return lerp(i, result, strength);
 }
