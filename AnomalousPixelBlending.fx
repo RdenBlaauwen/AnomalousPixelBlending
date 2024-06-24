@@ -131,11 +131,10 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   //  * [n] *
   // [w]   [e]
   //  * [s] *
-  float4 cornerProducts = deltas.rgba * deltas.gbar;
+  float4 cornerDeltas = min(deltas.rgba, deltas.gbar);
   //early return if none of the cornerproducts is greater than 0
-  if(dot(cornerProducts,float(1.0).xxxx) == 0f) discard;
+  if(dot(cornerDeltas,float(1.0).xxxx) == 0f) discard;
   // finally the root
-  float4 cornerDeltas = sqrt(cornerProducts);
 
   // The smallest weight determines whether the pixel has no similar pixels nearby (aka is isolated)
   float leastCornerDelta = min(min(cornerDeltas.r,cornerDeltas.g),min(cornerDeltas.b,cornerDeltas.a));
@@ -153,7 +152,7 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   //    [n]  
   // [w] * [e]
   //    [s]  
-  float2 transWeights = sqrt(deltas.rg * deltas.ba) * blendWeights.y;
+  float2 transWeights = min(deltas.rg, deltas.ba) * blendWeights.y;
   // Scale weight of transverse weights by size of existing weights. Prevents shader from blending too aggressively
   weights += ((8 * blendWeights.x) - weightSum) * transWeights.xyxy;
   weightSum = dot(weights, float(1.0).xxxx);
