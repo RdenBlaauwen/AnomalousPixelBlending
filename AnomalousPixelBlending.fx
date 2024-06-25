@@ -74,13 +74,13 @@ float getDelta(float3 colA, float3 colB)
   return getLuma(abs(colA - colB));
 }
 
-float4 getDeltas(float3 target, float3 w, float3 n, float3 e, float3 s)
+float4 getDeltas(float3 target, float3 west, float3 north, float3 east, float3 south)
 {
   float4 deltas;
-  deltas.r = getDelta(target, w);
-  deltas.g = getDelta(target, n);
-  deltas.b = getDelta(target, e);
-  deltas.a = getDelta(target, s);
+  deltas.r = getDelta(target, west);
+  deltas.g = getDelta(target, north);
+  deltas.b = getDelta(target, east);
+  deltas.a = getDelta(target, south);
 
   return deltas;
 }
@@ -92,10 +92,6 @@ float2 getAdaptedThresholds(float brightness) {
   return float2(MinDeltaThreshold, MaxDeltaThreshold) * adaptationFactor;
 }
 
-// float3 getWeights(float4 deltas, in float2 blendweights, float3 west, float3 north, float3 east, float3 south){
-  
-// }
-
 void setCornerWeights(float4 deltas, float2 blendWeights, inout float4 weights, inout float weightSum){
   float4 cornerWeights = deltas * blendWeights.x;
   // sum of each corner a given pixel is involved in yields its total weight (so far)
@@ -104,7 +100,9 @@ void setCornerWeights(float4 deltas, float2 blendWeights, inout float4 weights, 
 }
 
 void setTransverseWeights(float4 deltas, float2 blendWeights, inout float4 weights, inout float weightSum){
-  // taking the root of the products of transverse deltas detects whether target pixel is not part of a larger structure
+  // taking the least transverse delta (that is, the lowest delta on the vertical and horizontal planes respectively) represents transverse weight
+  // If these values are high it means the pixel is likely part of a structure of no more than 1 pixel wide,
+  // making it a target for blending
   // this is only an estimate of course
   //    [n]  
   // [w] * [e]
@@ -115,6 +113,11 @@ void setTransverseWeights(float4 deltas, float2 blendWeights, inout float4 weigh
   weightSum = dot(weights, float(1.0).xxxx);
 }
 
+float getIsolatedPixelBlendStrength(float4 cornerDeltas){
+  // The smallest weight determines whether the pixel has no similar pixels nearby (aka is isolated)
+  float leastCornerDelta = min(min(cornerDeltas.r,cornerDeltas.g),min(cornerDeltas.b,cornerDeltas.a));
+  return leastCornerDelta * IsolatedPixelremoval;
+}
 
 float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : SV_TARGET {
   // Skip if pixel is part of background. May prevent stars from being eaten
@@ -124,29 +127,29 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   }
 
   //    [n]  
-  // [w][i][e]
+  // [w][c][e]
   //    [s]  
-  float3 n,w,e,s,i;
-  i = tex2D(ReShade::BackBuffer, texcoord).rgb;
-  n = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, -1.0)).rgb; // N
-  w = tex2Doffset(ReShade::BackBuffer, texcoord, int2(-1.0, 0.0)).rgb; // W
-  e = tex2Doffset(ReShade::BackBuffer, texcoord, int2(1.0, 0.0)).rgb; // E
-  s = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, 1.0)).rgb; // S
+  float3 north, west, east, south, current;
+  current = tex2D(ReShade::BackBuffer, texcoord).rgb;
+  north = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, -1.0)).rgb; // N
+  west = tex2Doffset(ReShade::BackBuffer, texcoord, int2(-1.0, 0.0)).rgb; // W
+  east = tex2Doffset(ReShade::BackBuffer, texcoord, int2(1.0, 0.0)).rgb; // E
+  south = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, 1.0)).rgb; // S
 
   // Get luminance of each pixel
-  float ln,lw,le,ls,li;
-  li = getLuma(i);
-  ln = getLuma(n);
-  lw = getLuma(w);
-  le = getLuma(e);
-  ls = getLuma(s);
+  float northL,westL,eastL,southL,currentL;
+  currentL = getLuma(current);
+  northL = getLuma(north);
+  westL = getLuma(west);
+  eastL = getLuma(east);
+  southL = getLuma(south);
 
   // Get largest luma
-  float maxLuma = max(max(max(li,ln), max(lw,le)),ls);
+  float maxLuma = max(max(max(currentL, northL), max(westL, eastL)), southL);
   // use it to decrease threshold accordingly
   float2 thresholds = getAdaptedThresholds(maxLuma);
 
-  float4 deltas = getDeltas(i, w, n, e, s);
+  float4 deltas = getDeltas(current, west, north, east, south);
 
   float maxDelta = max(max(deltas.r,deltas.g), max(deltas.b,deltas.a));
 
@@ -156,7 +159,7 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   // Interpolate values between min and max threshold.
   deltas = smoothstep(thresholds.x, thresholds.y, deltas);
 
-  // taking the root of the products of the perpendicular deltas detects corners
+  // The smallest delta of each corner is used to represent the delta of that corner as a whole
   //  * [n] *
   // [w]   [e]
   //  * [s] *
@@ -165,9 +168,7 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   if(dot(cornerDeltas,float(1.0).xxxx) == 0f) discard;
   // finally the root
 
-  // The smallest weight determines whether the pixel has no similar pixels nearby (aka is isolated)
-  float leastCornerDelta = min(min(cornerDeltas.r,cornerDeltas.g),min(cornerDeltas.b,cornerDeltas.a));
-  float isolatedPixelBlendStrength = leastCornerDelta * IsolatedPixelremoval;
+  float isolatedPixelBlendStrength = getIsolatedPixelBlendStrength(cornerDeltas);
   // If pixel is isolated, increase the blending amounts
   const float2 blendWeights = float2(CORNER_WEIGHT, TRANSVERSE_WEIGHT) * (1f + isolatedPixelBlendStrength);
 
@@ -177,18 +178,16 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   setTransverseWeights(deltas, blendWeights, weights, weightSum);
 
   // finally, determine how much of the neighbouring pixels must be blended in, according to their weight
-  float3 blendColors = n * weights.g + w * weights.r + e * weights.b + s * weights.a;
+  float3 blendColors = north * weights.g + west * weights.r + east * weights.b + south * weights.a;
 
-  float3 result = blendColors + (i * (1.0 - weightSum));
+  float3 result = blendColors + (current * (1.0 - weightSum));
 
   // If the current pixel is brighter than the brightest adjacent "corner", highlight preservation must happen
-  // THe "corner" check exists to preserve blending strength around diagonal jaggies, even when the target pixel is bright.
-  float brightestCorner = sqrt(max(lw,le) * max(ln,ls));
-  float excessBrightness = smoothstep(brightestCorner, 1f, li);
+  // The "corner" check exists to preserve blending strength around diagonal jaggies, even when the target pixel is bright.
+  float brightestCorner = sqrt(max(westL,eastL) * max(northL,southL));
+  float excessBrightness = smoothstep(brightestCorner, 1f, currentL);
 
   // If the current pixel is very bright, apply a lower "highlight blending strength" to preserve highlights.
-  // float highlightPreservationFactor = rcp(1 + pow(EULER, -HighlightCurve * (excessBrightness - LOG_CURVE_CENTER))); // Logistic function to scale brightness
-  // Simpler function, achieves the same purpose but is simpler and faster.
   // TODO: more experimetns with the HighLightCurve, especially with higher values.
   float highlightPreservationFactor = saturate(excessBrightness * HighlightCurve); // Logistic function to scale brightness
 
@@ -197,7 +196,7 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
 
   float strength = lerp(BlendingStrength, highlightBlendStrength, highlightPreservationFactor);
 
-  return lerp(i, result, strength);
+  return lerp(current, result, strength);
 }
 
 technique AnomalousPixelBlending {
