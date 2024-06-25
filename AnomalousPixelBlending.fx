@@ -85,6 +85,37 @@ float4 getDeltas(float3 target, float3 w, float3 n, float3 e, float3 s)
   return deltas;
 }
 
+float2 getAdaptedThresholds(float brightness) {
+  // Get factor by which thresholds should be adapted/predicated. Lower max luma --> lower factor --> lower thresholds
+  float adaptationFactor = mad(-LumaAdaptationRange, 1.0 - brightness, 1.0);
+  // adapt thresholds
+  return float2(MinDeltaThreshold, MaxDeltaThreshold) * adaptationFactor;
+}
+
+// float3 getWeights(float4 deltas, in float2 blendweights, float3 west, float3 north, float3 east, float3 south){
+  
+// }
+
+void setCornerWeights(float4 deltas, float2 blendWeights, inout float4 weights, inout float weightSum){
+  float4 cornerWeights = deltas * blendWeights.x;
+  // sum of each corner a given pixel is involved in yields its total weight (so far)
+  weights = cornerWeights.xyzw + cornerWeights.wxyz;
+  weightSum = dot(weights, float(1.0).xxxx);
+}
+
+void setTransverseWeights(float4 deltas, float2 blendWeights, inout float4 weights, inout float weightSum){
+  // taking the root of the products of transverse deltas detects whether target pixel is not part of a larger structure
+  // this is only an estimate of course
+  //    [n]  
+  // [w] * [e]
+  //    [s]  
+  float2 transWeights = min(deltas.rg, deltas.ba) * blendWeights.y;
+  // Scale weight of transverse weights by size of existing weights. Prevents shader from blending too aggressively
+  weights += ((8 * blendWeights.x) - weightSum) * transWeights.xyxy;
+  weightSum = dot(weights, float(1.0).xxxx);
+}
+
+
 float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : SV_TARGET {
   // Skip if pixel is part of background. May prevent stars from being eaten
   if (SkipBackground) {
@@ -112,10 +143,8 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
 
   // Get largest luma
   float maxLuma = max(max(max(li,ln), max(lw,le)),ls);
-  // Get factor by which thresholds should be adapted/predicated. Lower max luma --> lower factor --> lower thresholds
-  float adaptationFactor = mad(-LumaAdaptationRange, 1.0 - maxLuma, 1.0);
-  // adapt thresholds
-  float2 thresholds = float2(MinDeltaThreshold, MaxDeltaThreshold) * adaptationFactor;
+  // use it to decrease threshold accordingly
+  float2 thresholds = getAdaptedThresholds(maxLuma);
 
   float4 deltas = getDeltas(i, w, n, e, s);
 
@@ -142,20 +171,10 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   // If pixel is isolated, increase the blending amounts
   const float2 blendWeights = float2(CORNER_WEIGHT, TRANSVERSE_WEIGHT) * (1f + isolatedPixelBlendStrength);
 
-  float4 cornerWeights = cornerDeltas * blendWeights.x;
-  // sum of each corner a given pixel is involved in yields its total weight (so far)
-  float4 weights = cornerWeights.xyzw + cornerWeights.wxyz;
-  float weightSum = dot(weights, float(1.0).xxxx);
-
-  // taking the root of the products of transverse deltas detects whether target pixel is not part of a larger structure
-  // this is only an estimate of course
-  //    [n]  
-  // [w] * [e]
-  //    [s]  
-  float2 transWeights = min(deltas.rg, deltas.ba) * blendWeights.y;
-  // Scale weight of transverse weights by size of existing weights. Prevents shader from blending too aggressively
-  weights += ((8 * blendWeights.x) - weightSum) * transWeights.xyxy;
-  weightSum = dot(weights, float(1.0).xxxx);
+  float4 weights;
+  float weightSum;
+  setCornerWeights(deltas, blendWeights, weights, weightSum);
+  setTransverseWeights(deltas, blendWeights, weights, weightSum);
 
   // finally, determine how much of the neighbouring pixels must be blended in, according to their weight
   float3 blendColors = n * weights.g + w * weights.r + e * weights.b + s * weights.a;
@@ -170,6 +189,7 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   // If the current pixel is very bright, apply a lower "highlight blending strength" to preserve highlights.
   // float highlightPreservationFactor = rcp(1 + pow(EULER, -HighlightCurve * (excessBrightness - LOG_CURVE_CENTER))); // Logistic function to scale brightness
   // Simpler function, achieves the same purpose but is simpler and faster.
+  // TODO: more experimetns with the HighLightCurve, especially with higher values.
   float highlightPreservationFactor = saturate(excessBrightness * HighlightCurve); // Logistic function to scale brightness
 
   //If isolatedPixelBlendStrength is high, highlightBlendStrength should be closer to normal blendingStrength
