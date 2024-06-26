@@ -104,9 +104,9 @@ void setTransverseWeights(float4 deltas, float2 blendWeights, inout float4 weigh
   // If these values are high it means the pixel is likely part of a structure of no more than 1 pixel wide,
   // making it a target for blending
   // this is only an estimate of course
-  //    [n]  
-  // [w] * [e]
-  //    [s]  
+  //      [g(n)]  
+  // [r(w)]    [a(e)]
+  //      [b(s)]  
   float2 transWeights = min(deltas.rg, deltas.ba) * blendWeights.y;
   // Scale weight of transverse weights by size of existing weights. Prevents shader from blending too aggressively
   weights += ((8 * blendWeights.x) - weightSum) * transWeights.xyxy;
@@ -160,9 +160,6 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   deltas = smoothstep(thresholds.x, thresholds.y, deltas);
 
   // The smallest delta of each corner is used to represent the delta of that corner as a whole
-  //  * [n] *
-  // [w]   [e]
-  //  * [s] *
   float4 cornerDeltas = min(deltas.rgba, deltas.gbar);
   //early return if none of the cornerproducts is greater than 0
   if(dot(cornerDeltas,float(1.0).xxxx) == 0f) discard;
