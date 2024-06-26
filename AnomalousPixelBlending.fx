@@ -37,11 +37,11 @@ uniform float BlendingStrength <
 > = 1.0;
 
 //TODO: change to highlight preservation (ivnert values)
-uniform float HighlightBlendingStrength <
-  ui_label = "HighlightBlendingStrength";
+uniform float HighlightPreservationStrength <
+  ui_label = "HighlightPreservation";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
-> = 0.0;
+> = 1.0;
 
 //TODO: rename, add reccomandations
 uniform float IsolatedPixelremoval <
@@ -181,7 +181,7 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
 
   // If the current pixel is brighter than the brightest adjacent "corner", highlight preservation must happen
   // The "corner" check exists to preserve blending strength around diagonal jaggies, even when the target pixel is bright.
-  float brightestCorner = sqrt(max(westL,eastL) * max(northL,southL));
+  float brightestCorner = sqrt(max(westL, eastL) * max(northL, southL));
   float excessBrightness = smoothstep(brightestCorner, 1f, currentL);
 
   // If the current pixel is very bright, apply a lower "highlight blending strength" to preserve highlights.
@@ -189,9 +189,11 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   float highlightPreservationFactor = saturate(excessBrightness * HighlightCurve); // Logistic function to scale brightness
 
   //If isolatedPixelBlendStrength is high, highlightBlendStrength should be closer to normal blendingStrength
-  float highlightBlendStrength = lerp(HighlightBlendingStrength, BlendingStrength, isolatedPixelBlendStrength);
+  // float highlightBlendStrength = lerp(HighlightPreservationStrength, BlendingStrength, isolatedPixelBlendStrength);
 
-  float strength = lerp(BlendingStrength, highlightBlendStrength, highlightPreservationFactor);
+  // float strength = lerp(BlendingStrength, highlightBlendStrength, highlightPreservationFactor);
+
+  float strength = BlendingStrength - (HighlightPreservationStrength * highlightPreservationFactor * (1f - isolatedPixelBlendStrength));
 
   return lerp(current, result, strength);
 }
