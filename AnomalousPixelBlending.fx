@@ -24,19 +24,12 @@ uniform float LumaAdaptationRange <
   ui_min = 0.0; ui_max = 0.97; ui_step = 0.01;
 > = 0.85;
 
-uniform float HighlightCurve <
-  ui_label = "HighlightCurve";
-  ui_type = "slider";
-  ui_min = 1.0; ui_max = 10.0; ui_step = 0.1;
-> = 5.0;
-
 uniform float BlendingStrength <
   ui_label = "BlendingStrength";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
 > = 1.0;
 
-//TODO: change to highlight preservation (ivnert values)
 uniform float HighlightPreservationStrength <
   ui_label = "HighlightPreservation";
   ui_type = "slider";
@@ -55,6 +48,9 @@ uniform float IsolatedPixelremoval <
 #endif
 #ifndef TRANSVERSE_WEIGHT
   #define TRANSVERSE_WEIGHT 0.125
+#endif
+#ifndef MAX_HIGHLIGHT_CURVE
+  #define MAX_HIGHLIGHT_CURVE 10.0
 #endif
 
 
@@ -180,19 +176,17 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   float3 result = blendColors + (current * (1.0 - weightSum));
 
   // If the current pixel is brighter than the brightest adjacent "corner", highlight preservation must happen
-  // The "corner" check exists to preserve blending strength around diagonal jaggies, even when the target pixel is bright.
+  // This corner check exists to preserve blending strength around diagonal jaggies, even when the target pixel is bright.
   float brightestCorner = sqrt(max(westL, eastL) * max(northL, southL));
   float excessBrightness = smoothstep(brightestCorner, 1f, currentL);
 
-  // If the current pixel is very bright, apply a lower "highlight blending strength" to preserve highlights.
-  // TODO: more experimetns with the HighLightCurve, especially with higher values.
-  float highlightPreservationFactor = saturate(excessBrightness * HighlightCurve); // Logistic function to scale brightness
+  // apply modifier to excessBrightness to have lower excess brightnesses count more
+  // Simplified version of an older logistic function, hence the "curve" var
+  float highlightCurve = MAX_HIGHLIGHT_CURVE * HighlightPreservationStrength; // mod strength scales with preservation strength
+  float highlightPreservationFactor = saturate(excessBrightness * highlightCurve); 
 
-  //If isolatedPixelBlendStrength is high, highlightBlendStrength should be closer to normal blendingStrength
-  // float highlightBlendStrength = lerp(HighlightPreservationStrength, BlendingStrength, isolatedPixelBlendStrength);
-
-  // float strength = lerp(BlendingStrength, highlightBlendStrength, highlightPreservationFactor);
-
+  // calculate final belnding strength by calculating strength of highlightpreservation and subtracting it
+  // If isolatedPixelBlendStrength is high, less highlight preservation is used
   float strength = BlendingStrength - (HighlightPreservationStrength * highlightPreservationFactor * (1f - isolatedPixelBlendStrength));
 
   return lerp(current, result, strength);
