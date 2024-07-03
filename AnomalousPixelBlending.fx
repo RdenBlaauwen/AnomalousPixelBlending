@@ -88,14 +88,15 @@ float2 getAdaptedThresholds(float brightness) {
   return float2(MinDeltaThreshold, MaxDeltaThreshold) * adaptationFactor;
 }
 
-void setCornerWeights(float4 deltas, float2 blendWeights, inout float4 weights, inout float weightSum){
+void SetCornerWeights(float4 deltas, float2 blendWeights, inout float4 weights, inout float weightSum){
   float4 cornerWeights = deltas * blendWeights.x;
   // sum of each corner a given pixel is involved in yields its total weight (so far)
   weights = cornerWeights.xyzw + cornerWeights.wxyz;
   weightSum = dot(weights, float(1.0).xxxx);
 }
 
-void setTransverseWeights(float4 deltas, float2 blendWeights, inout float4 weights, inout float weightSum){
+void SetTransverseWeights(float4 deltas, float2 blendWeights, inout float4 weights, inout float weightSum){
+  const float MAX_NEIGHBOUR_INFLUENCE = 8f;
   // taking the least transverse delta (that is, the lowest delta on the vertical and horizontal planes respectively) represents transverse weight
   // If these values are high it means the pixel is likely part of a structure of no more than 1 pixel wide,
   // making it a target for blending
@@ -105,11 +106,12 @@ void setTransverseWeights(float4 deltas, float2 blendWeights, inout float4 weigh
   //      [b(s)]  
   float2 transWeights = min(deltas.rg, deltas.ba) * blendWeights.y;
   // Scale weight of transverse weights by size of existing weights. Prevents shader from blending too aggressively
-  weights += ((8 * blendWeights.x) - weightSum) * transWeights.xyxy;
+  float maxWeightSum = MAX_NEIGHBOUR_INFLUENCE * blendWeights.x;
+  weights += (maxWeightSum - weightSum) * transWeights.xyxy;
   weightSum = dot(weights, float(1.0).xxxx);
 }
 
-float getIsolatedPixelBlendStrength(float4 cornerDeltas){
+float GetIsolatedPixelBlendStrength(float4 cornerDeltas){
   // The smallest weight determines whether the pixel has no similar pixels nearby (aka is isolated)
   float leastCornerDelta = min(min(cornerDeltas.r,cornerDeltas.g),min(cornerDeltas.b,cornerDeltas.a));
   return leastCornerDelta * IsolatedPixelremoval;
@@ -161,14 +163,14 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   if(dot(cornerDeltas,float(1.0).xxxx) == 0f) discard;
   // finally the root
 
-  float isolatedPixelBlendStrength = getIsolatedPixelBlendStrength(cornerDeltas);
+  float isolatedPixelBlendStrength = GetIsolatedPixelBlendStrength(cornerDeltas);
   // If pixel is isolated, increase the blending amounts
   const float2 blendWeights = float2(CORNER_WEIGHT, TRANSVERSE_WEIGHT) * (1f + isolatedPixelBlendStrength);
 
   float4 weights;
   float weightSum;
-  setCornerWeights(deltas, blendWeights, weights, weightSum);
-  setTransverseWeights(deltas, blendWeights, weights, weightSum);
+  SetCornerWeights(deltas, blendWeights, weights, weightSum);
+  SetTransverseWeights(deltas, blendWeights, weights, weightSum);
 
   // finally, determine how much of the neighbouring pixels must be blended in, according to their weight
   float3 blendColors = north * weights.g + west * weights.r + east * weights.b + south * weights.a;
