@@ -1,68 +1,114 @@
 #include "ReShadeUI.fxh"
 #include "ReShade.fxh"
 
-uniform bool SkipBackground <
-  ui_label = "SkipBackground";
+#define UI_MORPHOLOGICAL_AA_LIST "FXAA/CMAA/SMAA"
+#define UI_TEMPORAL_AA_LIST "TAA/Upscaling"
+
+uniform bool _SkipBackground <
+  ui_label = "Skip background";
   ui_type = "radio";
+  ui_tooltip = 
+    "Stops blending on the background/skybox.\n"
+    "Prevents erasure of stars, but may impede\n"
+    "the blending of the borders of objects\n"
+    "in front of the background.";
 > = false;
 
-uniform float MinDeltaThreshold <
-  ui_label = "MinDeltaThreshold";
+uniform float _LowerThreshold <
+  ui_label = "Lower threshold";
   ui_type = "slider";
   ui_min = 0.002; ui_max = 1.0; ui_step = 0.01;
+  ui_tooltip = 
+    "The minimum delta at which the shader activates.\n"
+    "Recommended values:\n"
+    " - No AA (standalone): 0.08 - 0.13\n"
+    " - " UI_MORPHOLOGICAL_AA_LIST ": 0.1 - 0.15\n"
+    " - " UI_TEMPORAL_AA_LIST ": 0.12 - 0.2";
 > = 0.12;
 
-uniform float MaxDeltaThreshold <
-  ui_label = "MaxDeltaThreshold";
+uniform float _UpperThreshold <
+  ui_label = "Upper threshold";
   ui_type = "slider";
   ui_min = 0.002; ui_max = 1.0; ui_step = 0.01;
-> = 0.2;
+  ui_tooltip = 
+    "The delta at which the shader reaches full strength.\n"
+    "Recommended values:\n"
+    " - No AA (standalone): 0.2 - 0.3\n"
+    " - " UI_MORPHOLOGICAL_AA_LIST ": 0.25 - 0.35\n"
+    " - " UI_TEMPORAL_AA_LIST ": 0.3 - 0.4";
+> = 0.35;
 
-uniform float LumaAdaptationRange <
-  ui_label = "LumaAdaptationRange";
+uniform float _LumaAdaptationRange <
+  ui_label = "Luma adaptation range";
   ui_type = "slider";
-  ui_min = 0.0; ui_max = 0.97; ui_step = 0.01;
+  ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+  ui_tooltip = 
+    "Lowers the tresholds in darker spots. This compensates\n"
+    "for the fact that darker spots can't have as big of a\n"
+    "delta as brighter spots.\n"
+    "Recommended values: 0.8 - 0.95";
 > = 0.85;
 
-uniform float BlendingStrength <
-  ui_label = "BlendingStrength";
+uniform float _BlendingStrength <
+  ui_label = "Blending strength";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+  // ui_tooltip = "";
 > = 1.0;
 
-uniform float HighlightPreservationStrength <
-  ui_label = "HighlightPreservation";
+uniform float _HighlightPreservationStrength <
+  ui_label = "Highlight preservation";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+  ui_tooltip = 
+    "Helps to preserve highlights and bright details.\n"
+    "Recommended values: 0.6 - 1.0";
 > = 1.0;
 
 //TODO: rename, add reccomandations
-uniform float IsolatedPixelremoval <
-  ui_label = "IsolatedPixelremoval";
+uniform float _IsolatedPixelremoval <
+  ui_label = "Isolated pixel removal";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+  ui_tooltip = 
+    "Extra blending for isolated pixels.\n"
+    "May eat stars if 'Skip Background' isn't enabled.\n"
+    "Recommended values: 0.25 - 0.75";
 > = 0.5;
+
+uniform int _Help <
+  ui_type = "radio"; ui_label = " ";
+  ui_text = 
+    "Transverse blending is the blending of 1 pix thick lines.\n"
+    "Set NO_TRANSVERSE_BLENDING to `true` to turn this off.";
+>;
+
+#ifndef NO_TRANSVERSE_BLENDING
+  #define NO_TRANSVERSE_BLENDING false
+#endif
 
 #ifndef CORNER_WEIGHT
   #define CORNER_WEIGHT 0.0625
 #endif
-#ifndef TRANSVERSE_WEIGHT
-  #define TRANSVERSE_WEIGHT 0.125
+
+#if !NO_TRANSVERSE_BLENDING
+  #ifndef TRANSVERSE_WEIGHT
+    #define TRANSVERSE_WEIGHT 0.125
+  #endif
 #endif
+
 #ifndef MAX_HIGHLIGHT_CURVE
   #define MAX_HIGHLIGHT_CURVE 10.0
 #endif
 
 
-#define SPB_LUMA_WEIGHTS float3(0.26, 0.6, 0.14)
+#define LUMA_WEIGHTS float3(0.26, 0.6, 0.14)
 #define BACKGROUND_DEPTH 1.0
-#define EULER 2.71828
-#define LOG_CURVE_CENTER .5
 
 
 float getLuma(float3 rgb)
 {
-  return dot(rgb, SPB_LUMA_WEIGHTS);
+  return dot(rgb, LUMA_WEIGHTS);
 }
 
 float getDelta(float3 colA, float3 colB) 
@@ -83,9 +129,9 @@ float4 getDeltas(float3 target, float3 west, float3 north, float3 east, float3 s
 
 float2 getAdaptedThresholds(float brightness) {
   // Get factor by which thresholds should be adapted/predicated. Lower max luma --> lower factor --> lower thresholds
-  float adaptationFactor = mad(-LumaAdaptationRange, 1.0 - brightness, 1.0);
+  float adaptationFactor = mad(-_LumaAdaptationRange, 1.0 - brightness, 1.0);
   // adapt thresholds
-  return float2(MinDeltaThreshold, MaxDeltaThreshold) * adaptationFactor;
+  return float2(_LowerThreshold, _UpperThreshold) * adaptationFactor;
 }
 
 void SetCornerWeights(float4 deltas, float2 blendWeights, inout float4 weights, inout float weightSum){
@@ -114,12 +160,12 @@ void SetTransverseWeights(float4 deltas, float2 blendWeights, inout float4 weigh
 float GetIsolatedPixelBlendStrength(float4 cornerDeltas){
   // The smallest weight determines whether the pixel has no similar pixels nearby (aka is isolated)
   float leastCornerDelta = min(min(cornerDeltas.r,cornerDeltas.g),min(cornerDeltas.b,cornerDeltas.a));
-  return leastCornerDelta * IsolatedPixelremoval;
+  return leastCornerDelta * _IsolatedPixelremoval;
 }
 
 float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : SV_TARGET {
   // Skip if pixel is part of background. May prevent stars from being eaten
-  if (SkipBackground) {
+  if (_SkipBackground) {
     float currDepth = ReShade::GetLinearizedDepth(texcoord);
     if (currDepth == BACKGROUND_DEPTH) discard;
   }
@@ -170,7 +216,10 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   float4 weights;
   float weightSum;
   SetCornerWeights(deltas, blendWeights, weights, weightSum);
-  SetTransverseWeights(deltas, blendWeights, weights, weightSum);
+
+  #if !NO_TRANSVERSE_BLENDING
+    SetTransverseWeights(deltas, blendWeights, weights, weightSum);
+  #endif
 
   // finally, determine how much of the neighbouring pixels must be blended in, according to their weight
   float3 blendColors = north * weights.g + west * weights.r + east * weights.b + south * weights.a;
@@ -184,12 +233,12 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
 
   // apply modifier to excessBrightness to have lower excess brightnesses count more
   // Simplified version of an older logistic function, hence the "curve" var
-  float highlightCurve = MAX_HIGHLIGHT_CURVE * HighlightPreservationStrength; // mod strength scales with preservation strength
+  float highlightCurve = MAX_HIGHLIGHT_CURVE * _HighlightPreservationStrength; // mod strength scales with preservation strength
   float highlightPreservationFactor = saturate(excessBrightness * highlightCurve); 
 
   // calculate final belnding strength by calculating strength of highlightpreservation and subtracting it
   // If isolatedPixelBlendStrength is high, less highlight preservation is used
-  float strength = BlendingStrength - (HighlightPreservationStrength * highlightPreservationFactor * (1f - isolatedPixelBlendStrength));
+  float strength = _BlendingStrength - (_HighlightPreservationStrength * highlightPreservationFactor * (1f - isolatedPixelBlendStrength));
 
   return lerp(current, result, strength);
 }
