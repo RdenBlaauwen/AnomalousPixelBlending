@@ -49,23 +49,12 @@ uniform float _LumaAdaptationRange <
     "Recommended values: 0.8 - 0.95";
 > = 0.85;
 
-uniform float _BlendingStrength <
-  ui_label = "Blending strength";
+uniform float _TransverseBlendingWeight <
+  ui_label = "Transverse blending";
   ui_type = "slider";
-  ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
-  // ui_tooltip = "";
-> = 1.0;
+  ui_min = 0.0; ui_max = 0.5; ui_step = 0.01;
+> = 0.25;
 
-uniform float _HighlightPreservationStrength <
-  ui_label = "Highlight preservation";
-  ui_type = "slider";
-  ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
-  ui_tooltip = 
-    "Helps to preserve highlights and bright details.\n"
-    "Recommended values: 0.6 - 1.0";
-> = 1.0;
-
-//TODO: rename, add reccomandations
 uniform float _IsolatedPixelremoval <
   ui_label = "Isolated pixel removal";
   ui_type = "slider";
@@ -74,7 +63,24 @@ uniform float _IsolatedPixelremoval <
     "Extra blending for isolated pixels.\n"
     "May eat stars if 'Skip Background' isn't enabled.\n"
     "Recommended values: 0.25 - 0.75";
-> = 0.5;
+> = 0.55;
+
+uniform float _HighlightPreservationStrength <
+  ui_label = "Highlight preservation";
+  ui_type = "slider";
+  ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+  ui_tooltip = 
+    "Helps to preserve highlights and bright details.\n"
+    "Recommended values: 0.6 - 1.0";
+> = 0.80;
+
+uniform float _BlendingStrength <
+  ui_label = "Blending strength";
+  ui_type = "slider";
+  ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+  // ui_tooltip = "";
+> = 1.0;
+
 
 uniform int _Help <
   ui_type = "radio"; ui_label = " ";
@@ -84,18 +90,14 @@ uniform int _Help <
 >;
 
 #ifndef NO_TRANSVERSE_BLENDING
-  #define NO_TRANSVERSE_BLENDING false
+  #define NO_TRANSVERSE_BLENDING 0
 #endif
 
 #ifndef CORNER_WEIGHT
   #define CORNER_WEIGHT 0.0625
 #endif
 
-#if !NO_TRANSVERSE_BLENDING
-  #ifndef TRANSVERSE_WEIGHT
-    #define TRANSVERSE_WEIGHT 0.125
-  #endif
-#endif
+#define TRANSVERSE_WEIGHT_ _TransverseBlendingWeight
 
 #ifndef MAX_HIGHLIGHT_CURVE
   #define MAX_HIGHLIGHT_CURVE 10.0
@@ -206,18 +208,18 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   // The smallest delta of each corner is used to represent the delta of that corner as a whole
   float4 cornerDeltas = min(deltas.rgba, deltas.gbar);
   //early return if none of the cornerproducts is greater than 0
-  if(dot(cornerDeltas,float(1.0).xxxx) == 0f) discard;
-  // finally the root
 
   float isolatedPixelBlendStrength = GetIsolatedPixelBlendStrength(cornerDeltas);
   // If pixel is isolated, increase the blending amounts
-  const float2 blendWeights = float2(CORNER_WEIGHT, TRANSVERSE_WEIGHT) * (1f + isolatedPixelBlendStrength);
+  const float2 blendWeights = float2(CORNER_WEIGHT, TRANSVERSE_WEIGHT_) * (1f + isolatedPixelBlendStrength);
+  // TODO: Potential band-aid fix for the fact that dark lines dont receive as much blending as they should
+  // const float2 blendWeights = float2(CORNER_WEIGHT, TRANSVERSE_WEIGHT_ * (1f + (1f - currentL)) * (1f + isolatedPixelBlendStrength);
 
   float4 weights;
   float weightSum;
   SetCornerWeights(deltas, blendWeights, weights, weightSum);
 
-  #if !NO_TRANSVERSE_BLENDING
+  #if NO_TRANSVERSE_BLENDING == 0
     SetTransverseWeights(deltas, blendWeights, weights, weightSum);
   #endif
 
