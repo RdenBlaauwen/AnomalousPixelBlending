@@ -169,7 +169,7 @@ void SetTransverseWeights(float4 deltas, float2 blendWeights, inout float4 weigh
 
 float GetIsolatedPixelBlendStrength(float4 cornerDeltas){
   // The smallest weight determines whether the pixel has no similar pixels nearby (aka is isolated)
-  float leastCornerDelta = min(min(cornerDeltas.r,cornerDeltas.g),min(cornerDeltas.b,cornerDeltas.a));
+  float leastCornerDelta = min(min(cornerDeltas.r,cornerDeltas.g), min(cornerDeltas.b,cornerDeltas.a));
   return leastCornerDelta * _IsolatedPixelremoval;
 }
 
