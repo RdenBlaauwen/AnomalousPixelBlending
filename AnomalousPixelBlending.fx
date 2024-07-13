@@ -103,7 +103,15 @@ uniform int _Help <
   #define MAX_HIGHLIGHT_CURVE 10.0
 #endif
 
+#ifndef MAX_DARK_LINE_BOOST
+  #define MAX_DARK_LINE_BOOST 4.0
+#endif
 
+#ifndef DARK_LINE_CURVE
+  #define DARK_LINE_CURVE 5.0
+#endif
+
+#define MAX_DARK_LINE_BOOST_REDUCTION (MAX_DARK_LINE_BOOST - 1f)
 #define LUMA_WEIGHTS float3(0.26, 0.6, 0.14)
 #define BACKGROUND_DEPTH 1.0
 
@@ -140,7 +148,7 @@ void SetCornerWeights(float4 deltas, float2 blendWeights, inout float4 weights, 
   float4 cornerWeights = deltas * blendWeights.x;
   // sum of each corner a given pixel is involved in yields its total weight (so far)
   weights = cornerWeights.xyzw + cornerWeights.wxyz;
-  weightSum = dot(weights, float(1.0).xxxx);
+  weightSum = dot(weights, float(1f).xxxx);
 }
 
 void SetTransverseWeights(float4 deltas, float2 blendWeights, inout float4 weights, inout float weightSum){
@@ -210,10 +218,11 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   //early return if none of the cornerproducts is greater than 0
 
   float isolatedPixelBlendStrength = GetIsolatedPixelBlendStrength(cornerDeltas);
+  // band-aid fix for the fact that dark lines dont receive as much blending as they should // TODO: find comprehensive solution
+  float darkLineBlendBoostFactor = mad(saturate(currentL * DARK_LINE_CURVE), -MAX_DARK_LINE_BOOST_REDUCTION, MAX_DARK_LINE_BOOST);
   // If pixel is isolated, increase the blending amounts
-  const float2 blendWeights = float2(CORNER_WEIGHT, TRANSVERSE_WEIGHT_) * (1f + isolatedPixelBlendStrength);
-  // TODO: Potential band-aid fix for the fact that dark lines dont receive as much blending as they should
-  // const float2 blendWeights = float2(CORNER_WEIGHT, TRANSVERSE_WEIGHT_ * (1f + (1f - currentL)) * (1f + isolatedPixelBlendStrength);
+  const float2 blendWeights = float2(CORNER_WEIGHT, TRANSVERSE_WEIGHT_ * darkLineBlendBoostFactor) * (1f + isolatedPixelBlendStrength);
+
 
   float4 weights;
   float weightSum;
