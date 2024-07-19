@@ -20,11 +20,12 @@ uniform float _LowerThreshold <
   ui_min = 0.002; ui_max = 1.0; ui_step = 0.01;
   ui_tooltip = 
     "The minimum delta at which the shader activates.\n"
+    "Must be less or equal than the upper threshold.\n"
     "Recommended values:\n"
-    " - No AA (standalone): 0.08 - 0.13\n"
-    " - " UI_MORPHOLOGICAL_AA_LIST ": 0.1 - 0.15\n"
-    " - " UI_TEMPORAL_AA_LIST ": 0.12 - 0.2";
-> = 0.12;
+    " - No AA (standalone): 0.15 - 0.23\n"
+    " - " UI_MORPHOLOGICAL_AA_LIST ": 0.15 - 0.25\n"
+    " - " UI_TEMPORAL_AA_LIST ": 0.2 - 0.45";
+> = 0.2;
 
 uniform float _UpperThreshold <
   ui_label = "Upper threshold";
@@ -32,11 +33,12 @@ uniform float _UpperThreshold <
   ui_min = 0.002; ui_max = 1.0; ui_step = 0.01;
   ui_tooltip = 
     "The delta at which the shader reaches full strength.\n"
+    "Must be greater or equal than the lower threshold.\n"
     "Recommended values:\n"
-    " - No AA (standalone): 0.2 - 0.3\n"
-    " - " UI_MORPHOLOGICAL_AA_LIST ": 0.25 - 0.35\n"
-    " - " UI_TEMPORAL_AA_LIST ": 0.3 - 0.4";
-> = 0.35;
+    " - No AA (standalone): 0.3 - 0.45\n"
+    " - " UI_MORPHOLOGICAL_AA_LIST ": 0.3 - 0.5\n"
+    " - " UI_TEMPORAL_AA_LIST ": 0.4 - 0.6";
+> = 0.45;
 
 uniform float _LumaAdaptationRange <
   ui_label = "Luma adaptation range";
@@ -53,6 +55,10 @@ uniform float _TransverseBlendingWeight <
   ui_label = "Transverse blending";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 0.5; ui_step = 0.01;
+  ui_tooltip = 
+    "Blends pixels which are straddled by differently colored pixels.\n"
+    "Helps to make thin, aliased lines less noticeable.\n"
+    "Recommended values: 0.1 - 0.35";
 > = 0.25;
 
 uniform float _IsolatedPixelremoval <
@@ -60,7 +66,8 @@ uniform float _IsolatedPixelremoval <
   ui_type = "slider";
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
   ui_tooltip = 
-    "Extra blending for isolated pixels.\n"
+    "Extra blending for pixels which have no similar\n"
+    "pixels above, below, left or right.\n"
     "May eat stars if 'Skip Background' isn't enabled.\n"
     "Recommended values: 0.25 - 0.75";
 > = 0.55;
@@ -71,6 +78,8 @@ uniform float _HighlightPreservationStrength <
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
   ui_tooltip = 
     "Helps to preserve highlights and bright details.\n"
+    "Higher values may reduce the shader's effect.\n"
+    "Try raising this value if you notice a loss of detail.\n"
     "Recommended values: 0.6 - 1.0";
 > = 0.80;
 
@@ -78,24 +87,39 @@ uniform float _BlendingStrength <
   ui_label = "Blending strength";
   ui_type = "slider";
   ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
-  // ui_tooltip = "";
+  ui_tooltip = 
+    "The degree in which the processed result is\n"
+    "applied to the scene.";
 > = 1.0;
 
 
 uniform int _Help <
   ui_type = "radio"; ui_label = " ";
   ui_text = 
-    "Transverse blending is the blending of 1 pix thick lines.\n"
-    "Set NO_TRANSVERSE_BLENDING to `true` to turn this off.";
+    "Transverse blending blends pixels which are straddled by\n"
+    "differently colored pixels. Set `NO_TRANSVERSE_BLENDING`\n"
+    "to `1` to disable it entirely.\n"
+    "\n"
+    "`MAX_HIGHLIGHT_CURVE` determines how much brighter a pixel\n"
+    "must be than it's surroundings before highlight preservation\n"
+    "kicks in fully. Higher values mean lower brightness differences\n"
+    "are preserved more aggressively.\n"
+    "\n"
+    "Transverse blending strength is boosted for dark lines\n"
+    "`MAX_DARK_LINE_BOOST` is a multiplier which represents the\n"
+    "maximum blending boost for dark lines.\n"
+    "`DARK_LINE_CURVE` determines how dark a pixel must be to be\n"
+    "boosted. The higher this value, the darker a pixel must be."
+    ;
 >;
 
 #ifndef NO_TRANSVERSE_BLENDING
   #define NO_TRANSVERSE_BLENDING 0
 #endif
 
-#ifndef CORNER_WEIGHT
-  #define CORNER_WEIGHT 0.0625
-#endif
+// #ifndef CORNER_WEIGHT
+  #define CORNER_WEIGHT 0.0625 // 1/16
+// #endif
 
 #define TRANSVERSE_WEIGHT_ _TransverseBlendingWeight
 
