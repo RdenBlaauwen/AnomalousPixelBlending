@@ -4,6 +4,12 @@ APB works especially well with morphological anti-aliasing techniques (e.g., FXA
 
 If you encounter any issues, have suggestions for new features, or think some features could be improved, feel free to let me know. In fact, I would appreciate it as it would make the shader better and it would teach me new things. You can open an issue, create a PR, or contact me through Github or the ReShade forums.
 
+# Installation
+
+Open `AnomalousPixelBlending.fx` and click the download button in the top right corner. Save the file to the `reshade-shaders/Shaders` folder of the game where you want to use this shader, and you're good to go.
+
+The markdown (\*.md) files are just documentation and can be ignored.
+
 # How to use
 
 APB is best applied after any anti-aliasing. This improves performance and prevents interference with edge detection.
@@ -30,6 +36,6 @@ More information can be found in tooltips in the effect UI controls and texts.
 
 # Credits
 
-Runs on Reshade by Crosire
+Runs on Reshade by Crosire.
 
-Thanks to Lordbean for inspiring me to create this shader.
+Thanks to Lordbean for inspiring this shader.
