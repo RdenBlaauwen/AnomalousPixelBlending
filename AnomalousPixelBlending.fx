@@ -128,7 +128,7 @@ uniform int _Help <
 #endif
 
 #ifndef MAX_DARK_LINE_BOOST
-  #define MAX_DARK_LINE_BOOST 4.0
+  #define MAX_DARK_LINE_BOOST 2.5
 #endif
 
 #ifndef DARK_LINE_CURVE
@@ -239,7 +239,6 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
 
   // The smallest delta of each corner is used to represent the delta of that corner as a whole
   float4 cornerDeltas = min(deltas.rgba, deltas.gbar);
-  //early return if none of the cornerproducts is greater than 0
 
   float isolatedPixelBlendStrength = GetIsolatedPixelBlendStrength(cornerDeltas);
   // band-aid fix for the fact that dark lines dont receive as much blending as they should // TODO: find comprehensive solution
@@ -247,10 +246,9 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   // If pixel is isolated, increase the blending amounts
   const float2 blendWeights = float2(CORNER_WEIGHT, TRANSVERSE_WEIGHT_ * darkLineBlendBoostFactor) * (1f + isolatedPixelBlendStrength);
 
-
   float4 weights;
   float weightSum;
-  SetCornerWeights(deltas, blendWeights, weights, weightSum);
+  SetCornerWeights(cornerDeltas, blendWeights, weights, weightSum);
 
   #if NO_TRANSVERSE_BLENDING == 0
     SetTransverseWeights(deltas, blendWeights, weights, weightSum);
