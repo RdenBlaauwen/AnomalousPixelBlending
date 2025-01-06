@@ -121,6 +121,7 @@ uniform int _Help <
   #define CORNER_WEIGHT 0.0625 // 1/16
 // #endif
 
+// If fewer corners than this are detected, corner blending is skipped
 #ifndef MIN_CORNER_COUNT_FOR_CORNER_BLENDING
   #define MIN_CORNER_COUNT_FOR_CORNER_BLENDING 1f
 #endif
@@ -255,8 +256,9 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
 
   #if MIN_CORNER_COUNT_FOR_CORNER_BLENDING > 1f
   
+    // Each cornerDelta > 0f becomes 1f, the rest stays 0f
     float4 cornerFlags = step(0f, cornerDeltas);
-    float cornerCount = (cornerFlags.r + cornerFlags.b) * (cornerFlags.g + cornerFlags.a);
+    float cornerCount = dot(cornerFlags, float(0f).xxxx);
 
     if (cornerCount >= MIN_CORNER_COUNT_FOR_CORNER_BLENDING) {
       SetCornerWeights(cornerDeltas, blendWeights, weights, weightSum);
