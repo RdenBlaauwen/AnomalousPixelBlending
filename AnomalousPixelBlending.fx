@@ -121,6 +121,10 @@ uniform int _Help <
   #define CORNER_WEIGHT 0.0625 // 1/16
 // #endif
 
+#ifndef MIN_CORNER_COUNT_FOR_CORNER_BLENDING
+  #define MIN_CORNER_COUNT_FOR_CORNER_BLENDING 1f
+#endif
+
 #define TRANSVERSE_WEIGHT_ _TransverseBlendingWeight
 
 #ifndef MAX_HIGHLIGHT_CURVE
@@ -248,7 +252,19 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
 
   float4 weights;
   float weightSum;
-  SetCornerWeights(cornerDeltas, blendWeights, weights, weightSum);
+
+  #if MIN_CORNER_COUNT_FOR_CORNER_BLENDING > 1f
+  
+    float4 cornerFlags = step(0f, cornerDeltas);
+    float cornerCount = (cornerFlags.r + cornerFlags.b) * (cornerFlags.g + cornerFlags.a);
+
+    if (cornerCount >= MIN_CORNER_COUNT_FOR_CORNER_BLENDING) {
+      SetCornerWeights(cornerDeltas, blendWeights, weights, weightSum);
+    }
+
+  #else
+    SetCornerWeights(cornerDeltas, blendWeights, weights, weightSum);
+  #endif
 
   #if NO_TRANSVERSE_BLENDING == 0
     SetTransverseWeights(deltas, blendWeights, weights, weightSum);
