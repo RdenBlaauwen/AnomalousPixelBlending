@@ -254,19 +254,16 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   float4 weights;
   float weightSum;
 
-  #if MIN_CORNER_COUNT_FOR_CORNER_BLENDING > 1f
-  
-    // Each cornerDelta > 0f becomes 1f, the rest stays 0f
-    float4 cornerFlags = step(0f, cornerDeltas);
-    float cornerCount = dot(cornerFlags, float(0f).xxxx);
+  // Each cornerDelta > 0f becomes 1f, the rest stays 0f
+  float cornerCount = (deltas.r + deltas.b) * (deltas.g + deltas.a);
 
-    if (cornerCount >= MIN_CORNER_COUNT_FOR_CORNER_BLENDING) {
-      SetCornerWeights(cornerDeltas, blendWeights, weights, weightSum);
-    }
+  // if (cornerCount == MIN_CORNER_COUNT_FOR_CORNER_BLENDING) {
+  //   return float3(1f,0f,0f);
+  // }
 
-  #else
+  if (cornerCount >= MIN_CORNER_COUNT_FOR_CORNER_BLENDING) {
     SetCornerWeights(cornerDeltas, blendWeights, weights, weightSum);
-  #endif
+  }
 
   #if NO_TRANSVERSE_BLENDING == 0
     SetTransverseWeights(deltas, blendWeights, weights, weightSum);
