@@ -135,9 +135,21 @@ uniform int _Help <
   #define DARK_LINE_CURVE 5.0
 #endif
 
+#ifndef USE_COLOR_SPACE
+  #define USE_COLOR_SPACE 0
+#endif
+
 #define MAX_DARK_LINE_BOOST_REDUCTION (MAX_DARK_LINE_BOOST - 1f)
 #define LUMA_WEIGHTS float3(0.26, 0.6, 0.14)
 #define BACKGROUND_DEPTH 1.0
+
+texture colorTex : COLOR;
+
+sampler colorLinearSampler
+{
+  Texture = colorTex;
+  SRGBTexture = true;
+};
 
 
 float getLuma(float3 rgb)
@@ -208,11 +220,19 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   // [w][c][e]
   //    [s]  
   float3 north, west, east, south, current;
+#if USE_COLOR_SPACE
+  current = tex2D(colorLinearSampler, texcoord).rgb;
+  north = tex2Doffset(colorLinearSampler, texcoord, int2(0.0, -1.0)).rgb; // N
+  west = tex2Doffset(colorLinearSampler, texcoord, int2(-1.0, 0.0)).rgb; // W
+  east = tex2Doffset(colorLinearSampler, texcoord, int2(1.0, 0.0)).rgb; // E
+  south = tex2Doffset(colorLinearSampler, texcoord, int2(0.0, 1.0)).rgb; // S
+#else
   current = tex2D(ReShade::BackBuffer, texcoord).rgb;
   north = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, -1.0)).rgb; // N
   west = tex2Doffset(ReShade::BackBuffer, texcoord, int2(-1.0, 0.0)).rgb; // W
   east = tex2Doffset(ReShade::BackBuffer, texcoord, int2(1.0, 0.0)).rgb; // E
   south = tex2Doffset(ReShade::BackBuffer, texcoord, int2(0.0, 1.0)).rgb; // S
+#endif
 
   // Get luminance of each pixel
   float northL,westL,eastL,southL,currentL;
@@ -281,5 +301,9 @@ technique AnomalousPixelBlending {
   {
     VertexShader = PostProcessVS;
     PixelShader = BlendingPS;
+#if USE_COLOR_SPACE
+    // Use color space aware sampler if enabled
+    SRGBWriteEnable = true;
+#endif
   }
 }
