@@ -1,6 +1,6 @@
 Anomalous Pixel Blending (APB) is a shader designed to reduce the pixelated appearance of games. It achieves this by blending anomalous pixels with their surroundings in a smart way which takes into account local morphology and minimises blur.
 
-APB works especially well with morphological anti-aliasing techniques (e.g., FXAA, CMAA, SMAA), as it catches many of the aliasing artifacts they miss. It can also reduce sharpening artifacts.
+APB works especially well with morphological anti-aliasing techniques (e.g., FXAA, CMAA, SMAA), as it catches many of the aliasing artifacts they miss. It can also be used to reduce sharpening artifacts.
 
 If you encounter any issues, have suggestions for new features, or think some features could be improved, feel free to let me know. In fact, I would appreciate it as it would make the shader better and it would teach me new things. You can open an issue, create a PR, or contact me through Github or the ReShade forums.
 
@@ -24,9 +24,11 @@ APB works with a lower and an upper threshold. The lower threshold must always b
 
 Keep in mind that if you use driver-level sharpening effects (such as Radeon™ Image Sharpening) you may need more agressive settings to counteract the sharpening.
 
-More information can be found in tooltips in the effect UI controls and texts.
+Everything else you need to know can be found in the UI of the shader itself as textual explanations and tooltips.
 
 # Tested games
+
+This shader should work everywhere, but here are the games I've tested it on:
 
 - Age of Empires II HD edition
 - Deus Ex: Mankind Divided
@@ -38,4 +40,4 @@ More information can be found in tooltips in the effect UI controls and texts.
 
 Runs on Reshade by Crosire.
 
-Thanks to Lordbean for inspiring this shader.
+Thanks to Lordbean for inspiring this shader with this Image Softening algorithms.
