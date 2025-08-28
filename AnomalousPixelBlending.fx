@@ -280,6 +280,7 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   // calculate final belnding strength by calculating strength of highlightpreservation and subtracting it
   // If isolatedPixelBlendStrength is high, less highlight preservation is used
   float strength = _BlendingStrength - (_HighlightPreservationStrength * highlightPreservationFactor * (1f - isolatedPixelBlendStrength));
+  strength = saturate(strength);
 
   return lerp(current, result, strength);
 }
