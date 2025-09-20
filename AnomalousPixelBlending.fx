@@ -128,7 +128,7 @@ uniform int _Help <
 #endif
 
 #ifndef MAX_DARK_LINE_BOOST
-  #define MAX_DARK_LINE_BOOST 2.5
+  #define MAX_DARK_LINE_BOOST .5
 #endif
 
 #ifndef DARK_LINE_CURVE
