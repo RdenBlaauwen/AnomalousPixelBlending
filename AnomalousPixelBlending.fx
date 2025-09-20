@@ -128,7 +128,7 @@ uniform int _Help <
 #endif
 
 #ifndef MAX_DARK_LINE_BOOST
-  #define MAX_DARK_LINE_BOOST 2.5
+  #define MAX_DARK_LINE_BOOST .5
 #endif
 
 #ifndef DARK_LINE_CURVE
@@ -277,9 +277,11 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   float highlightCurve = MAX_HIGHLIGHT_CURVE * _HighlightPreservationStrength; // mod strength scales with preservation strength
   float highlightPreservationFactor = saturate(excessBrightness * highlightCurve); 
 
-  // calculate final belnding strength by calculating strength of highlightpreservation and subtracting it
+  // calculate final belnding strength by calculating strength of highlightpreservation and isolated pixel blending and subtracting that
+  float highlightPreservation = _HighlightPreservationStrength * highlightPreservationFactor;
   // If isolatedPixelBlendStrength is high, less highlight preservation is used
-  float strength = _BlendingStrength - (_HighlightPreservationStrength * highlightPreservationFactor * (1f - isolatedPixelBlendStrength));
+  float strengthReductionFactor = 1f - highlightPreservation * (1f - isolatedPixelBlendStrength);
+  float strength = _BlendingStrength * strengthReductionFactor;
 
   return lerp(current, result, strength);
 }
