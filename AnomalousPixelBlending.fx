@@ -277,10 +277,11 @@ float3 BlendingPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : S
   float highlightCurve = MAX_HIGHLIGHT_CURVE * _HighlightPreservationStrength; // mod strength scales with preservation strength
   float highlightPreservationFactor = saturate(excessBrightness * highlightCurve); 
 
-  // calculate final belnding strength by calculating strength of highlightpreservation and subtracting it
+  // calculate final belnding strength by calculating strength of highlightpreservation and isolated pixel blending and subtracting that
+  float highlightPreservation = _HighlightPreservationStrength * highlightPreservationFactor;
   // If isolatedPixelBlendStrength is high, less highlight preservation is used
-  float strength = _BlendingStrength - (_HighlightPreservationStrength * highlightPreservationFactor * (1f - isolatedPixelBlendStrength));
-  strength = saturate(strength);
+  float strengthReductionFactor = 1f - highlightPreservation * (1f - isolatedPixelBlendStrength);
+  float strength = _BlendingStrength * strengthReductionFactor;
 
   return lerp(current, result, strength);
 }
